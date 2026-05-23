@@ -384,17 +384,25 @@ def slider_html(label, value, lo, hi, color="#0D7377", pct=None):
 # ─────────────────────────────────────────────────────────────────────────────
 def nine_box_fig(df_plot, highlight_ee=None):
     perf_map = {"Low Performer":0,"Moderate Performer":1,"High Performer":2,"Exceptional Performer":2}
-    pot_map  = {"Low Potential":0,"Moderate Potential":1,"High Potential":2}
 
     def parse_box(s):
-        if not isinstance(s,str) or "/" not in s: return None,None
+        """Parse only the performance axis from the 9-Box string."""
+        if not isinstance(s,str) or "/" not in s: return None
         parts = [p.strip() for p in s.split("/")]
         px = next((v for k,v in perf_map.items() if k in parts[0]),None)
-        py = next((v for k,v in pot_map.items()  if k in parts[1]),None)
-        return px, py
+        return px
+
+    def lps_to_potential(lps_val):
+        """Derive potential axis from LPS score — ensures high-LPS employees
+        appear in the High Potential row regardless of HR label."""
+        v = safe_float(lps_val)
+        if v >= 65: return 2   # High Potential
+        if v >= 35: return 1   # Moderate Potential
+        return 0               # Low Potential
 
     df2 = df_plot.copy()
-    df2[["px","py"]] = df2["9-Box Position"].apply(lambda x: pd.Series(parse_box(x)))
+    df2["px"] = df2["9-Box Position"].apply(parse_box)
+    df2["py"] = df2["LPS"].apply(lps_to_potential)
     df2 = df2.dropna(subset=["px","py"])
     rng = np.random.RandomState(42)
     df2["xj"] = df2["px"] + rng.uniform(-0.28,0.28,len(df2))
@@ -494,6 +502,9 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif!important;background-c
 .scard{border-radius:14px;padding:16px 20px;margin-bottom:10px;border-left:5px solid var(--teal);background:var(--card);box-shadow:0 2px 10px rgba(11,37,64,0.08);position:relative;}
 .scard-rank{position:absolute;top:12px;right:14px;font-family:'Syne',sans-serif;font-size:0.68rem;font-weight:800;background:var(--navy);color:var(--gold-lt);border-radius:20px;padding:3px 10px;letter-spacing:1px;text-transform:uppercase;}
 .scard h3{font-family:'Syne',sans-serif;font-size:1rem;font-weight:700;margin:0 0 2px 0;}
+/* Hide auto-generated anchor link icons next to headings */
+h1 a,h2 a,h3 a,h4 a,h5 a,h6 a,.scard h3 a,[data-testid="stMarkdownContainer"] h1 a,[data-testid="stMarkdownContainer"] h2 a,[data-testid="stMarkdownContainer"] h3 a{display:none!important;visibility:hidden!important;}
+a.anchor{display:none!important;}
 .lps-num{font-family:'Syne',sans-serif;font-size:2.2rem;font-weight:800;line-height:1;}
 .band-pill{display:inline-block;border-radius:20px;padding:3px 10px;font-size:0.72rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-left:8px;vertical-align:middle;}
 .sec-hdr{font-family:'Syne',sans-serif;font-size:1.05rem;font-weight:800;color:var(--navy);border-bottom:2px solid var(--teal);padding-bottom:6px;margin-bottom:14px;}
@@ -549,10 +560,23 @@ with st.sidebar:
     w4 = st.slider("Leadership Breadth", 5,30,15,5,key="w4")
     w5 = st.slider("Readiness",          5,30,10,5,key="w5")
     total_w = w1+w2+w3+w4+w5
-    wclr = "#6EE7B7" if total_w==100 else "#FCA5A5"
-    st.markdown(f"<div style='color:{wclr};font-size:0.85rem;font-weight:600'>"
-                f"Total: {total_w}% {'✓' if total_w==100 else '— must equal 100'}</div>",
-                unsafe_allow_html=True)
+    if total_w > 100:
+        st.markdown(
+            f"<div style='background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;"
+            f"padding:8px 12px;font-size:0.82rem;color:#B91C1C;font-weight:700;margin-top:4px'>"
+            f"⚠️ Total is {total_w}% — exceeds 100. Reduce sliders until total = 100."
+            f"</div>", unsafe_allow_html=True)
+    elif total_w == 100:
+        st.markdown(
+            f"<div style='color:#6EE7B7;font-size:0.85rem;font-weight:600;margin-top:2px'>"
+            f"✓ Total: 100% — weights are valid</div>",
+            unsafe_allow_html=True)
+    else:
+        st.markdown(
+            f"<div style='background:#FEF3C7;border:1px solid #D97706;border-radius:8px;"
+            f"padding:8px 12px;font-size:0.82rem;color:#92400E;font-weight:600;margin-top:4px'>"
+            f"Total: {total_w}% — must equal exactly 100"
+            f"</div>", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("<h2>🔍 Filters</h2>", unsafe_allow_html=True)
     exclude_risk = st.checkbox("Exclude High Flight Risk", value=True)
@@ -604,10 +628,10 @@ VE_LBLS  = ["Mental Agility","People Agility","Change Agility","Results Agility"
 # ═════════════════════════════════════════════════════════════════════════════
 # TABS
 # ═════════════════════════════════════════════════════════════════════════════
-tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9 = st.tabs([
+tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10 = st.tabs([
     "🏆 Succession Pipeline","👤 Employee Profile","⚖️ Compare Employees",
     "🌐 Org Chart","📊 Org Readiness","🧠 KF Assessment","📈 Career Path",
-    "💊 Development Rx","📋 Data Templates",
+    "💊 Development Rx","📋 Data Templates","📖 Glossary",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -667,7 +691,11 @@ with tab1:
             annotations=[dict(text=f"<b>{n_pool}</b><br>Pool",x=0.5,y=0.5,
                               font=dict(family="Syne",size=14,color="#0B2540"),showarrow=False)]
         )
-        st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar":False}, key="pc_001")
+        fig_donut.update_layout(title=dict(text="<b>Talent Pool — LPS Band Distribution</b>",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+        fig_donut.update_layout(title=dict(text="Eligible Pool — Readiness Distribution",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+        st.plotly_chart(fig_donut, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_001")
+        st.markdown("<div style='font-size:0.72rem;color:#64748B;text-align:center;margin-top:-8px'>Distribution of succession readiness bands across the eligible talent pool. A healthy pipeline has ≥20% in Band 4–5.</div>", unsafe_allow_html=True)
+        st.caption("Distribution of eligible employees by succession readiness band. 'Ready Now' (Band 5) can step into a critical role immediately.")
 
     with right:
         st.markdown('<div class="sec-hdr">🔗 Succession Pipeline — Top 3 Role-Specific Successors</div>',
@@ -723,7 +751,7 @@ with tab1:
                   </div>
                 </div>""", unsafe_allow_html=True)
                 st.plotly_chart(bar, use_container_width=True,
-                                config={"displayModeBar":False}, key=f"bar_{i}_{sel_role}")
+                                config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key=f"bar_{i}_{sel_role}")
 
             # Comparison chart
             st.markdown('<div class="sec-hdr" style="margin-top:8px">📊 Pipeline Cluster Comparison</div>',
@@ -747,7 +775,11 @@ with tab1:
                 margin=dict(l=0,r=0,t=30,b=0),height=260,
                 paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_cmp, use_container_width=True, config={"displayModeBar":False}, key="pc_003")
+            fig_cmp.update_layout(title=dict(text="<b>Pipeline Cluster Comparison — Top 3 Successors</b>",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+            fig_cmp.update_layout(title=dict(text="LPS Cluster Scores — Top 3 Successors Compared",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+            st.plotly_chart(fig_cmp, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_003")
+            st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'>Each bar shows the normalised score (0–100) for one of the five LPS clusters. Higher is better. Use this to identify each successor's relative strengths and development gaps.</div>", unsafe_allow_html=True)
+            st.caption("Side-by-side LPS cluster scores for the top 3 successors. Higher scores across all 5 clusters indicate a stronger, more well-rounded candidate.")
 
         dl1,dl2,dl3 = st.columns([1,1,1])
         with dl2:
@@ -787,14 +819,15 @@ with tab2:
         </div>""", unsafe_allow_html=True)
     with h2c:
         st.plotly_chart(gauge_fig(lps,"Leadership Potential Score",color=bc),
-                        use_container_width=True,config={"displayModeBar":False}, key="pc_t2_gauge")
+                        use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t2_gauge")
+        st.markdown("<div style='font-size:0.71rem;color:#64748B;text-align:center;margin-top:-10px'>Composite score (0–100) across 5 weighted clusters: Performance, KF Assessment, Career Velocity, Leadership Breadth, and Readiness.</div>", unsafe_allow_html=True)
     with h3c:
         kfc = safe_float(emp.get("KF KFALP - Composite Score (1-5)",0))
         vec = safe_float(emp.get("KF viaEdge - Learning Agility Composite (1-5)",0))
         if kfc>0: st.plotly_chart(speedometer_fig(kfc,"KFALP Composite",color="#C9A227"),
-                                   use_container_width=True,config={"displayModeBar":False}, key="pc_t2_kfalp")
+                                   use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t2_kfalp")
         if vec>0: st.plotly_chart(speedometer_fig(vec,"viaEdge Composite",color="#7C3AED"),
-                                   use_container_width=True,config={"displayModeBar":False}, key="pc_t2_viaedge")
+                                   use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t2_viaedge")
 
     sl_col,rd_col = st.columns([1.3,1])
     with sl_col:
@@ -838,17 +871,21 @@ with tab2:
         kf_vals = [safe_float(emp.get(k,2.5),2.5) for k in KF_KEYS]
         ref_kf  = [df_emp[k].mean() if k in df_emp.columns else 3.0 for k in KF_KEYS]
         st.plotly_chart(radar_fig(kf_vals,KF_LBLS,"KFALP","#C9A227",ref_kf),
-                        use_container_width=True,config={"displayModeBar":False}, key="pc_t2_radar_kf")
+                        use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t2_radar_kf")
+        st.markdown("<div style='font-size:0.71rem;color:#64748B;text-align:center;margin-top:-8px'>Gold = employee score · Dashed gold = org average benchmark. Scale 1–5.</div>", unsafe_allow_html=True)
 
         st.markdown('<div class="sec-hdr">🕸 viaEdge Radar</div>', unsafe_allow_html=True)
         ve_vals = [safe_float(emp.get(k,2.5),2.5) for k in VE_KEYS]
         ref_ve  = [df_emp[k].mean() if k in df_emp.columns else 3.0 for k in VE_KEYS]
         st.plotly_chart(radar_fig(ve_vals,VE_LBLS,"viaEdge","#7C3AED",ref_ve),
-                        use_container_width=True,config={"displayModeBar":False}, key="pc_t2_radar_ve")
+                        use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t2_radar_ve")
+        st.markdown("<div style='font-size:0.71rem;color:#64748B;text-align:center;margin-top:-8px'>Purple = employee score · Dashed gold = org average benchmark. Measures learning agility across 5 dimensions. Scale 1–5.</div>", unsafe_allow_html=True)
 
         st.markdown('<div class="sec-hdr">🔲 9-Box Position</div>', unsafe_allow_html=True)
-        st.plotly_chart(nine_box_fig(df_emp,highlight_ee=emp["EE Number"]),
-                        use_container_width=True,config={"displayModeBar":False}, key="pc_t2_ninebox")
+        nb2_fig = nine_box_fig(df_emp,highlight_ee=emp["EE Number"])
+        nb2_fig.update_layout(title=dict(text="9-Box Position (★ = Selected Employee)",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+        st.plotly_chart(nb2_fig, use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t2_ninebox")
+        st.markdown("<div style='font-size:0.71rem;color:#64748B;text-align:center;margin-top:-8px'>★ Gold star = this employee. X-axis = HR-assessed performance. Y-axis = LPS-derived potential. Hover dots for details.</div>", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 3 — COMPARE EMPLOYEES
@@ -871,7 +908,7 @@ with tab3:
             clr = cmp_colors[i]
             with hcols[i]:
                 st.plotly_chart(gauge_fig(row["LPS"],name[:18],color=clr),
-                                use_container_width=True,config={"displayModeBar":False}, key=f"pc_cmp_gauge_{i}")
+                                use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key=f"pc_cmp_gauge_{i}")
                 bs = BAND_SHORT.get(row["LPS Band"],row["LPS Band"])
                 st.markdown(f"<div style='text-align:center;font-size:0.78rem;color:#64748B'>"
                             f"{row['Current Job Title']}<br>Grade {int(row['Job Grade (1-9)'])}"
@@ -942,11 +979,11 @@ with tab3:
                 margin=dict(l=40,r=40,t=20,b=20),height=320,
                 paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
             )
-            st.plotly_chart(fig_ov, use_container_width=True, config={"displayModeBar":False}, key="pc_011")
+            st.plotly_chart(fig_ov, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_011")
         with oc2:
             st.markdown('<div class="sec-hdr">🔲 9-Box Comparison</div>', unsafe_allow_html=True)
             st.plotly_chart(nine_box_fig(cmp_df),
-                            use_container_width=True,config={"displayModeBar":False}, key="pc_t3_ninebox")
+                            use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t3_ninebox")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 4 — ORG CHART
@@ -1038,7 +1075,9 @@ with tab4:
                                paper_bgcolor="white",plot_bgcolor="white",
                                hoverlabel=dict(bgcolor="white",font_size=11,
                                                font_family="DM Sans",bordercolor="#D1DCE8"))
-        st.plotly_chart(fig_org, use_container_width=True, config={"displayModeBar":True}, key="pc_013")
+        fig_org.update_layout(title=dict(text="Interactive Organisation Chart — Node colour = Job Grade",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+        st.plotly_chart(fig_org, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"displaylogo":False}, key="pc_013")
+        st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'>Node colour and size indicate job grade (darker/larger = more senior). Hover any node for grade and LPS. ★ = Critical Role. Use scroll to zoom, drag to pan.</div>", unsafe_allow_html=True)
         leg_cols=st.columns(len(grade_colors))
         for i,(g,c) in enumerate(sorted(grade_colors.items(),reverse=True)):
             with leg_cols[i]:
@@ -1096,7 +1135,11 @@ with tab5:
             yaxis=dict(tickfont=dict(family="DM Sans",size=9),autorange="reversed"),
             paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_heat, use_container_width=True, config={"displayModeBar":False}, key="pc_014")
+        fig_heat.update_layout(title=dict(text="<b>Bench Strength Heatmap — LPS of Top 3 Successors per Role</b>",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+        fig_heat.update_layout(title=dict(text="Bench Strength — LPS of Top 3 Successors per Critical Role",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+        st.plotly_chart(fig_heat, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_014")
+        st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'><b>How to read:</b> Each cell shows the LPS of a successor for that role. Green = strong bench (LPS ≥ 65), red = weak bench (LPS &lt; 35). Roles with all-red rows are high-priority succession risks.</div>", unsafe_allow_html=True)
+        st.caption("Each cell shows the LPS score of the ranked successor for that critical role. Dark green = strong bench; red = succession gap requiring urgent attention.")
 
     with r2:
         st.markdown('<div class="sec-hdr">🎯 LPS Band Distribution</div>', unsafe_allow_html=True)
@@ -1108,7 +1151,11 @@ with tab5:
                               yaxis=dict(tickfont=dict(family="DM Sans",size=10)),
                               margin=dict(l=0,r=40,t=10,b=0),height=200,
                               paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_bd, use_container_width=True, config={"displayModeBar":False}, key="pc_015")
+        fig_bd.update_layout(title=dict(text="<b>LPS Band Distribution</b>",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+        fig_bd.update_layout(title=dict(text="LPS Band Distribution",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+        st.plotly_chart(fig_bd, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_015")
+        st.markdown("<div style='font-size:0.71rem;color:#64748B;margin-top:-6px'>Count of eligible employees in each readiness band. Aim for a balanced pyramid with enough Band 3–5 talent to cover all critical roles.</div>", unsafe_allow_html=True)
+        st.caption("Count of eligible employees per readiness band. A healthy pipeline has a growing number in Band 3–5.")
 
     # 9-Box Grid
     st.markdown('<div class="sec-hdr" style="margin-top:10px">🔲 Organisation-wide 9-Box Grid</div>',
@@ -1118,7 +1165,11 @@ with tab5:
         nb_opts = ["All Departments"]+sorted(df_elig["Department"].unique().tolist())
         nb_dept = st.selectbox("Filter by Department", nb_opts, key="nb_dept")
     nb_df = df_elig if nb_dept=="All Departments" else df_elig[df_elig["Department"]==nb_dept]
-    st.plotly_chart(nine_box_fig(nb_df), use_container_width=True, config={"displayModeBar":False}, key="pc_016")
+    nb_fig = nine_box_fig(nb_df)
+    nb_fig.update_layout(title=dict(text="Organisation-wide 9-Box Grid — Performance vs LPS-Derived Potential",font=dict(family="Syne",size=12,color="#0B2540"),x=0.5,xanchor="center"))
+    st.plotly_chart(nb_fig, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_016")
+    st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'><b>Y-axis (Potential)</b> is derived from LPS: High ≥ 65, Moderate 35–64, Low &lt; 35. <b>X-axis (Performance)</b> is from the HR-assessed 9-Box label. Hover over any dot for employee details. Top-right cells (Top Talent, Future Leader, High Potential) are your priority succession candidates.</div>", unsafe_allow_html=True)
+    st.caption("X-axis = Performance (from performance ratings). Y-axis = Potential (derived from LPS score: ≥65 High, 35–64 Moderate, <35 Low). Top-right 'Top Talent' cell represents the ideal succession pool.")
 
     nb_sum = nb_df.groupby("9-Box Position").agg(
         Count=("EE Number","count"),
@@ -1151,7 +1202,7 @@ with tab6:
                     fig_kd.update_layout(margin=dict(l=0,r=0,t=30,b=0),height=200,
                                           paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
                                           title_font=dict(family="Syne",size=12),xaxis_title=None,yaxis_title=None)
-                    st.plotly_chart(fig_kd,use_container_width=True,config={"displayModeBar":False}, key="pc_017")
+                    st.plotly_chart(fig_kd,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_017")
                     band_cnt=dim_df["KFALP Rating Band"].value_counts()
                     kf_bc={"Exceptional":"#065F46","Strong":"#1B7A3E","Effective":"#2563EB","Developing":"#D97706","Limited":"#B91C1C"}
                     fig_kb=go.Figure(go.Pie(labels=band_cnt.index,values=band_cnt.values,hole=0.55,
@@ -1159,41 +1210,50 @@ with tab6:
                     fig_kb.update_layout(margin=dict(l=0,r=0,t=10,b=0),height=180,showlegend=True,
                                           legend=dict(font=dict(size=8),orientation="h",x=0.5,xanchor="center",y=-0.1),
                                           paper_bgcolor="rgba(0,0,0,0)")
-                    st.plotly_chart(fig_kb,use_container_width=True,config={"displayModeBar":False}, key="pc_018")
+                    st.plotly_chart(fig_kb,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_018")
                 with kfc2:
                     pivot=df_kf.pivot_table(index="Employee Full Name",columns="KF KFALP Dimension",
                                              values="Raw Score (1-5)",aggfunc="mean").dropna()
-                    sc=("Learnability" if "Learnability" in pivot.columns else pivot.columns[0])
+                    sc=sel_dim if sel_dim in pivot.columns else ("Learnability" if "Learnability" in pivot.columns else pivot.columns[0])
                     pivot=pivot.sort_values(sc,ascending=False).head(30)
                     fig_kh=px.imshow(pivot.round(1),color_continuous_scale=["#B91C1C","#D97706","#DBEAFE","#1B7A3E"],
                                       zmin=1,zmax=5,text_auto=".1f",aspect="auto",title="KFALP — Top 30")
                     fig_kh.update_layout(margin=dict(l=0,r=0,t=30,b=0),height=480,paper_bgcolor="rgba(0,0,0,0)",
                                           title_font=dict(family="Syne",size=12),xaxis_tickfont=dict(size=9),yaxis_tickfont=dict(size=8))
-                    st.plotly_chart(fig_kh,use_container_width=True,config={"displayModeBar":False}, key="pc_019")
+                    st.plotly_chart(fig_kh,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_019")
+                    st.markdown("<div style='font-size:0.71rem;color:#64748B;margin-top:-6px'>Sorted by selected dimension (descending). Green = high score (4–5), Red = low score (1–2). Top 30 employees shown.</div>", unsafe_allow_html=True)
+                    st.caption("KFALP dimension scores for top 30 employees sorted by Learnability. Green = strong; red = development need. Hover over any cell for the exact score.")
 
         with kft2:
             if "viaedge" in data:
                 df_ve=data["viaedge"].copy()
                 vec1,vec2=st.columns([1,2])
                 with vec1:
-                    ve_dims=df_ve["KF viaEdge Dimension"].unique().tolist()
+                    # Exclude composite/aggregate rows — keep only the 5 pure agility dimensions
+                    _ve_valid_dims = ["Mental Agility","People Agility","Change Agility","Results Agility","Self-Awareness"]
+                    ve_dims_raw = df_ve["KF viaEdge Dimension"].unique().tolist()
+                    ve_dims = [d for d in ve_dims_raw if any(v in d for v in _ve_valid_dims)]
+                    if not ve_dims:  # fallback — use whatever is in the file
+                        ve_dims = ve_dims_raw
                     sel_ve=st.selectbox("viaEdge Dimension",ve_dims,key="ved")
-                    ve_df=df_ve[df_ve["KF viaEdge Dimension"]==sel_ve]
+                    ve_df=df_ve[df_ve["KF viaEdge Dimension"]==sel_ve].copy()
                     fig_vd=px.histogram(ve_df,x="Raw Score (1-5)",nbins=20,color_discrete_sequence=["#7C3AED"],title=f"{sel_ve} — Distribution")
                     fig_vd.update_layout(margin=dict(l=0,r=0,t=30,b=0),height=200,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",title_font=dict(family="Syne",size=12),xaxis_title=None,yaxis_title=None)
-                    st.plotly_chart(fig_vd,use_container_width=True,config={"displayModeBar":False}, key="pc_020")
+                    st.plotly_chart(fig_vd,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_020")
                     pct_col="KF viaEdge Learning Agility Percentile"
                     if pct_col in df_ve.columns:
-                        fig_vp=px.histogram(df_ve.drop_duplicates("EE Number"),x=pct_col,nbins=20,color_discrete_sequence=["#0D7377"],title="Learning Agility Percentile")
+                        fig_vp=px.histogram(df_ve.drop_duplicates("EE Number"),x=pct_col,nbins=20,color_discrete_sequence=["#0D7377"],title="Overall Learning Agility Percentile (All Employees)")
                         fig_vp.update_layout(margin=dict(l=0,r=0,t=30,b=0),height=180,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",title_font=dict(family="Syne",size=11),xaxis_title=None,yaxis_title=None)
-                        st.plotly_chart(fig_vp,use_container_width=True,config={"displayModeBar":False}, key="pc_021")
+                        st.plotly_chart(fig_vp,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_021")
                 with vec2:
                     ve_pivot=df_ve.pivot_table(index="Employee Full Name",columns="KF viaEdge Dimension",values="Raw Score (1-5)",aggfunc="mean").dropna()
-                    sv="Mental Agility" if "Mental Agility" in ve_pivot.columns else ve_pivot.columns[0]
+                    sv=sel_ve if sel_ve in ve_pivot.columns else (ve_pivot.columns[0] if len(ve_pivot.columns)>0 else "Mental Agility")
                     ve_pivot=ve_pivot.sort_values(sv,ascending=False).head(30)
                     fig_vh=px.imshow(ve_pivot.round(1),color_continuous_scale=["#B91C1C","#D97706","#DBEAFE","#1B7A3E"],zmin=1,zmax=5,text_auto=".1f",aspect="auto",title="viaEdge — Top 30")
                     fig_vh.update_layout(margin=dict(l=0,r=0,t=30,b=0),height=480,paper_bgcolor="rgba(0,0,0,0)",title_font=dict(family="Syne",size=12),xaxis_tickfont=dict(size=9),yaxis_tickfont=dict(size=8))
-                    st.plotly_chart(fig_vh,use_container_width=True,config={"displayModeBar":False}, key="pc_022")
+                    st.plotly_chart(fig_vh,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_022")
+                    st.markdown("<div style='font-size:0.71rem;color:#64748B;margin-top:-6px'>Sorted by selected agility dimension (descending). Green = Expert/Advanced, Red = Needs Development. Top 30 employees shown.</div>", unsafe_allow_html=True)
+                    st.caption("viaEdge Learning Agility scores across 5 dimensions for top 30 employees. Mental Agility and Change Agility are the strongest predictors of senior leadership readiness.")
 
         with kft3:
             if "ref" in data:
@@ -1336,23 +1396,25 @@ with tab7:
         # ── 3-column performance + grade view ──────────────────────────────────
         pa, pb, pc_col = st.columns([1.2, 1.2, 1])
         with pa:
-            st.markdown('<div style="font-size:0.82rem;font-weight:700;color:#0B2540;margin-bottom:6px">Performance Ratings</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:0.82rem;font-weight:700;color:#0B2540;margin-bottom:6px">Performance Ratings vs Org Average</div>', unsafe_allow_html=True)
             st.plotly_chart(fig_perf_bar, use_container_width=True,
-                            config={"displayModeBar":False}, key="pc_t7_perfbar")
+                            config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t7_perfbar")
+            st.caption("Compares this employee's 3-year average and last annual rating against the organisation mean (dotted line). Bars above the line indicate above-average performance.")
         with pb:
-            st.markdown('<div style="font-size:0.82rem;font-weight:700;color:#0B2540;margin-bottom:6px">Grade Distribution (Gold = Your Grade)</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:0.82rem;font-weight:700;color:#0B2540;margin-bottom:6px">Grade Distribution — Where You Stand</div>', unsafe_allow_html=True)
             st.plotly_chart(fig_grade_dist, use_container_width=True,
-                            config={"displayModeBar":False}, key="pc_t7_gradedist")
+                            config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_t7_gradedist")
+            st.caption("Organisation-wide headcount per grade. Gold bar = this employee's current grade. Higher grades have fewer employees — reflects the pyramid structure of leadership.")
         with pc_col:
             st.markdown('<div style="font-size:0.82rem;font-weight:700;color:#0B2540;margin-bottom:6px">KF Assessment</div>', unsafe_allow_html=True)
             k1v = safe_float(e_cp.get("KF KFALP - Composite Score (1-5)", 0))
             k2v = safe_float(e_cp.get("KF viaEdge - Learning Agility Composite (1-5)", 0))
             if k1v > 0:
                 st.plotly_chart(speedometer_fig(k1v, "KFALP", color="#C9A227"),
-                                use_container_width=True, config={"displayModeBar":False}, key="pc_023")
+                                use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_023")
             if k2v > 0:
                 st.plotly_chart(speedometer_fig(k2v, "viaEdge", color="#7C3AED"),
-                                use_container_width=True, config={"displayModeBar":False}, key="pc_024")
+                                use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_024")
 
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
@@ -1419,7 +1481,11 @@ with tab7:
                     legend=dict(font=dict(family="DM Sans",size=9),orientation="h",x=0.5,xanchor="center",y=1.06),
                     margin=dict(l=0,r=60,t=30,b=0),height=320,
                     paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#F8FBFD",hovermode="x unified")
-                st.plotly_chart(fig_tl,use_container_width=True,config={"displayModeBar":False}, key="pc_025")
+                fig_tl.update_layout(title=dict(text="<b>Career Grade Progression & Performance at Each Promotion</b>",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+                fig_tl.update_layout(title=dict(text="Career Progression Timeline — Grade & Performance at Each Promotion",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+                st.plotly_chart(fig_tl,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_025")
+                st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'>Teal line = grade trajectory (left axis). Gold dashed line = performance rating at each promotion (right axis). Larger markers = higher performance rating at time of promotion. Gold star = current position.</div>", unsafe_allow_html=True)
+                st.caption("Blue line = grade trajectory over career. Gold dotted line = performance rating at each promotion. Larger/greener dots = higher performance at time of promotion. Star = current position.")
                 disp_cols=[c for c in ["Promotion Number (Career)","Promotion Year","Promoted From Grade","Promoted To Grade","Performance Rating at Promotion","Years Since Last Promotion"] if c in emp_promos.columns]
                 st.markdown('<div class="sec-hdr" style="margin-top:8px">📋 Promotion History</div>',unsafe_allow_html=True)
                 st.dataframe(emp_promos[disp_cols].reset_index(drop=True),use_container_width=True,hide_index=True)
@@ -1434,7 +1500,9 @@ with tab7:
         fig_vel.update_layout(margin=dict(l=0,r=0,t=30,b=0),height=320,
                                paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="#F8FBFD",
                                title_font=dict(family="Syne",size=12))
-        st.plotly_chart(fig_vel,use_container_width=True,config={"displayModeBar":False}, key="pc_026")
+        st.plotly_chart(fig_vel,use_container_width=True,config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_026")
+        st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'><b>How to read:</b> Each dot is an employee. X-axis = 3-year average performance rating (1–5). Y-axis = promotions per year over full career. Employees in the top-right quadrant (high performance + high velocity) are your fast-track high-potentials. Colour indicates current job grade.</div>", unsafe_allow_html=True)
+        st.caption("Each dot is an employee. X = average performance rating; Y = career promotion velocity (promotions per year). Employees in the top-right corner are high performers who are also promoted quickly — the ideal succession pool. Colour = job grade.")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TAB 8 — DEVELOPMENT PRESCRIPTION (Interventions & Courses)
@@ -1735,7 +1803,11 @@ with tab8:
         margin=dict(l=0,r=0,t=30,b=0), height=280,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_rx, use_container_width=True, config={"displayModeBar":False}, key="pc_rx_bar")
+    fig_rx.update_layout(title=dict(text="<b>Estimated LPS Cluster Uplift After Completing Recommended Interventions</b>",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+    fig_rx.update_layout(title=dict(text="Estimated LPS Cluster Impact After Completing Recommended Interventions",font=dict(family="Syne",size=11,color="#0B2540"),x=0.5,xanchor="center"))
+    st.plotly_chart(fig_rx, use_container_width=True, config={"scrollZoom":True,"displayModeBar":True,"modeBarButtonsToRemove":["select2d","lasso2d","autoScale2d"],"displaylogo":False}, key="pc_rx_bar")
+    st.markdown("<div style='font-size:0.72rem;color:#64748B;margin-top:-6px'><b>Illustrative projection only.</b> Grey bars = current cluster scores. Teal bars = estimated scores after completing all prescribed interventions for this employee. Weakest clusters receive a larger uplift estimate (+15 pts) vs non-priority clusters (+5 pts).</div>", unsafe_allow_html=True)
+    st.caption("Grey bars = current cluster scores. Teal bars = projected scores after completing the prescribed interventions (illustrative estimate: +15 pts for weakest clusters, +5 pts for others). Focus on the largest gaps first.")
 
     # ── Full intervention catalogue ────────────────────────────────────────────
     st.markdown('<div class="sec-hdr" style="margin-top:16px">📚 Full Intervention Catalogue</div>',
@@ -1974,3 +2046,411 @@ with tab9:
         for r, d in rules
     )
     st.markdown(f'<div class="card">{rules_html}</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAB 10 — GLOSSARY
+# ═══════════════════════════════════════════════════════════════════════════
+with tab10:
+    st.markdown('<div class="sec-hdr">📖 Glossary — Terms, Metrics & Formulae</div>',
+                unsafe_allow_html=True)
+    st.markdown("""
+    <div style="background:#EBF4F8;border-left:4px solid #0D7377;border-radius:8px;
+         padding:14px 18px;margin-bottom:18px;font-size:0.85rem;color:#374151">
+      This glossary defines every metric, score, label, and formula used throughout the
+      Succession Planning Engine. Use it as a reference when interpreting charts, scores,
+      and pipeline recommendations.
+    </div>
+    """, unsafe_allow_html=True)
+
+    GLOSSARY_SECTIONS = [
+        {
+            "title": "🎯 Core Scores & Bands",
+            "terms": [
+                {
+                    "term": "Leadership Potential Score (LPS)",
+                    "definition": "A composite score from 0–100 that quantifies an employee's overall readiness and potential for senior leadership.",
+                    "formula": "LPS = (C1 × w1%) + (C2 × w2%) + (C3 × w3%) + (C4 × w4%) + (C5 × w5%)\nwhere w1–w5 are the sidebar weight sliders and must sum to 100."
+                },
+                {
+                    "term": "LPS Band",
+                    "definition": "A readiness label derived from the LPS score indicating succession timeline.",
+                    "formula": "Band 5 — Ready Now: LPS ≥ 80\nBand 4 — Ready in 1–2 Years: LPS 65–79\nBand 3 — Ready in 2–3 Years: LPS 50–64\nBand 2 — Emerging Potential: LPS 35–49\nBand 1 — Not Yet Ready: LPS < 35"
+                },
+                {
+                    "term": "C1 — Performance Cluster (0–100)",
+                    "definition": "Measures sustained delivery and performance trajectory. Combines average rating, last rating, and improvement trend.",
+                    "formula": "C1 = norm(Avg 3yr Perf) × 0.50 + norm(Last Perf) × 0.35 + norm(Trajectory) × 0.15\nnorm() = min-max normalisation to 0–100 within the organisation."
+                },
+                {
+                    "term": "C2 — KF Assessment Cluster (0–100)",
+                    "definition": "Measures leadership potential via Korn Ferry tools (KFALP + viaEdge). Falls back to performance average if KF data is absent.",
+                    "formula": "C2 = norm(KF Blended Assessment Composite)\nKF Blended = KFALP Composite × 0.55 + viaEdge Composite × 0.45"
+                },
+                {
+                    "term": "C3 — Career Velocity Cluster (0–100)",
+                    "definition": "Measures the speed and recency of career progression.",
+                    "formula": "C3 = norm(Promotions/Year Career) × 0.50 + norm(Promotions/Year 5yr) × 0.35 + norm(Total Promotions) × 0.15"
+                },
+                {
+                    "term": "C4 — Leadership Breadth Cluster (0–100)",
+                    "definition": "Measures the width of leadership exposure across functions, geographies, and high-stakes situations.",
+                    "formula": "C4 = Cross-Functional Exp × 25 + International Exp × 20\n     + norm(Critical Projects Led) × 30 + norm(External Recognition) × 15\n     + norm(Direct Reports) × 10   → then normalised to 0–100."
+                },
+                {
+                    "term": "C5 — Readiness & Mobility Cluster (0–100)",
+                    "definition": "Measures deployability into a senior role — accounts for grade gap, mobility willingness, and flight risk.",
+                    "formula": "C5 = norm(Mobility Willingness) × 0.35 + norm(Grade Proximity to Top) × 0.35\n     + Flight Risk Score × 0.30\nFlight Risk Score: Low = 100, Medium = 50, High = 0"
+                },
+            ]
+        },
+        {
+            "title": "📈 Career Velocity Metrics",
+            "terms": [
+                {
+                    "term": "Promotions per Year (Career)",
+                    "definition": "The average rate of promotion across an employee's entire career. Higher = faster career advancement.",
+                    "formula": "Promotions per Year (Career) = Total Promotions (Career) ÷ Tenure with Organisation (Years)"
+                },
+                {
+                    "term": "Promotions per Year (Last 5 Years)",
+                    "definition": "Promotion rate over the most recent 5-year window. More current than the career average — reflects recent momentum better.",
+                    "formula": "Promotions per Year (Last 5 Yrs) = Promotions in Last 5 Years ÷ 5"
+                },
+                {
+                    "term": "Performance Velocity",
+                    "definition": "The rate of CHANGE in performance rating over time — whether an employee is improving, stable, or declining. Distinct from promotion velocity: an employee can have high performance velocity (rapidly improving scores) without yet receiving a promotion.",
+                    "formula": "Performance Velocity ≈ Performance Trajectory = Last Annual Rating − 3-Year Average Rating\nPositive → improving trend | Negative → declining | Zero → stable"
+                },
+                {
+                    "term": "Performance Trajectory",
+                    "definition": "Difference between the most recent annual rating and the 3-year average. Positive trajectory = leading indicator of promotion readiness.",
+                    "formula": "Trajectory = Last Annual Performance Rating − Average Performance Rating (3yr)"
+                },
+                {
+                    "term": "Performance Velocity vs Promotions per Year — Key Difference",
+                    "definition": "These measure DIFFERENT dimensions of career progress and must not be confused:\n• Performance Velocity: How fast SCORES are improving (quality signal — are they getting better?)\n• Promotions per Year: How fast they are climbing the GRADE LADDER (speed signal — are they moving up?)\n\nAn employee can be a fast promoter with stable scores (high promotion velocity, zero performance velocity), OR a rapidly improving performer not yet promoted (high performance velocity, zero promotion velocity). The ideal succession candidate has BOTH high and rising performance AND a strong promotion track record.",
+                    "formula": "Performance Velocity = Trajectory = Last Rating − Avg 3yr Rating\nPromotion Velocity = Total Promotions ÷ Tenure Years"
+                },
+                {
+                    "term": "Average Tenure per Role (Years)",
+                    "definition": "Average time per role throughout career. Lower values = broader breadth; higher values = depth in fewer roles.",
+                    "formula": "Avg Tenure per Role = Tenure with Organisation ÷ (Total Internal Role Changes + 1)"
+                },
+            ]
+        },
+        {
+            "title": "🔲 9-Box Matrix",
+            "terms": [
+                {
+                    "term": "9-Box Grid",
+                    "definition": "Talent segmentation framework plotting Performance (X-axis) against Potential (Y-axis), creating 9 cells. The engine uses LPS to drive the Potential axis — ensuring the assessment-based score governs placement rather than subjective HR labels.",
+                    "formula": "X-axis (Performance): from performance ratings\n  Low ≤ 2.5 | Moderate 2.5–3.5 | High/Exceptional > 3.5\nY-axis (Potential): from LPS score\n  Low Potential: LPS < 35 | Moderate: LPS 35–64 | High: LPS ≥ 65"
+                },
+                {
+                    "term": "Top Talent",
+                    "definition": "High performance + High potential (LPS ≥ 65). Highest priority for succession and retention.",
+                    "formula": "Top-right cell of the 9-box grid."
+                },
+                {
+                    "term": "Enigma",
+                    "definition": "High LPS but currently underperforming. May be in the wrong role, under-challenged, or experiencing difficulties. Requires HR investigation before succession decisions.",
+                    "formula": "Bottom-left of the High Potential row (Low Perf + LPS ≥ 65)."
+                },
+                {
+                    "term": "Misaligned Star",
+                    "definition": "High performer but low LPS. Strong delivery but limited assessed leadership potential. May be a technical expert rather than a leadership candidate.",
+                    "formula": "Top-right of the Low Potential row (High Perf + LPS < 35)."
+                },
+            ]
+        },
+        {
+            "title": "🧠 Korn Ferry Assessments",
+            "terms": [
+                {
+                    "term": "KF KFALP (Leadership Architect Learning Profile)",
+                    "definition": "Psychometric tool assessing leadership potential across 6 dimensions: Drivers, Curiosity, Insight, Engagement, Determination, Learnability. Scores 1–5.",
+                    "formula": "Composite = weighted average of 6 dimension scores.\nScale: 1=Limited, 2=Developing, 3=Effective, 4=Strong, 5=Exceptional"
+                },
+                {
+                    "term": "KF viaEdge (Learning Agility)",
+                    "definition": "Measures how well an individual learns from experience across 5 agility dimensions. Learning agility is the strongest Korn Ferry predictor of long-term leadership potential.",
+                    "formula": "5 Dimensions: Mental Agility, People Agility, Change Agility, Results Agility, Self-Awareness.\nComposite = weighted average of 5 dimensions.\nPercentile = normed vs global KF benchmark."
+                },
+                {
+                    "term": "KF Blended Assessment Composite",
+                    "definition": "Single score combining KFALP and viaEdge for use in the LPS C2 cluster.",
+                    "formula": "Blended = KFALP Composite × 0.55 + viaEdge Composite × 0.45\nScale: 1.0–5.0"
+                },
+                {
+                    "term": "Learning Agility",
+                    "definition": "Ability to learn from new experiences and apply learnings to succeed in new, first-time situations. #1 Korn Ferry predictor of senior leadership success.",
+                    "formula": "Measured by KF viaEdge Composite (1–5) and Percentile rank (1–100 vs global norm)."
+                },
+            ]
+        },
+        {
+            "title": "🏢 Pipeline & Succession Terms",
+            "terms": [
+                {
+                    "term": "Critical Role",
+                    "definition": "A role whose vacancy would significantly disrupt performance, strategy, or continuity. Drives the succession pipeline.",
+                    "formula": "13 roles defined in ROLES_CFG — CEO through Senior Director level."
+                },
+                {
+                    "term": "Successor Rank",
+                    "definition": "Priority order within a role's pipeline. Rank 1 = Primary (best LPS + grade fit), Rank 2 = Secondary, Rank 3 = Tertiary.",
+                    "formula": "Ranked by LPS within the role-specific eligible pool after grade windowing and deduplication."
+                },
+                {
+                    "term": "Grade Window",
+                    "definition": "Range of job grades eligible to be successors for a given role. Prevents over-promoting and ensures realistic candidates.",
+                    "formula": "Eligible grades = [min_grade − grade_window, min_grade + 1]\nE.g. CFO (min_grade=8, window=2): grades 6–9 are eligible."
+                },
+                {
+                    "term": "3-Layer Deduplication",
+                    "definition": "Algorithm ensuring no employee is assigned as the #1 successor to more than one critical role — preserving pipeline depth and preventing single points of failure.",
+                    "formula": "Layer 1: Grade window filtering.\nLayer 2: Department preference (dept-matched ranked first).\nLayer 3: Global dedup — once used as #1, excluded from #1 for all subsequent roles."
+                },
+                {
+                    "term": "Bench Strength",
+                    "definition": "Quality and depth of the succession pipeline. Measured by LPS of top 3 successors. High bench = multiple strong candidates at different readiness horizons.",
+                    "formula": "Visualised in the Bench Strength Heatmap in Tab 5 — Org Readiness."
+                },
+                {
+                    "term": "Flight Risk",
+                    "definition": "Assessed likelihood that an employee will voluntarily leave. Levels: Low / Medium / High. High flight-risk employees excluded from pipeline by default.",
+                    "formula": "C5 Flight Risk Score: Low=100, Medium=50, High=0 (contributes 30% of C5 cluster)."
+                },
+            ]
+        },
+    ]
+
+    for section in GLOSSARY_SECTIONS:
+        st.markdown(f'<div class="sec-hdr" style="margin-top:18px">{section["title"]}</div>',
+                    unsafe_allow_html=True)
+        for item in section["terms"]:
+            with st.expander(f"**{item['term']}**", expanded=False):
+                defn = item["definition"].replace("\n","<br>")
+                st.markdown(
+                    f'<div style="font-size:0.85rem;color:#374151;line-height:1.7;margin-bottom:8px">{defn}</div>',
+                    unsafe_allow_html=True)
+                if item.get("formula"):
+                    formula_html = item["formula"].replace("\n","<br>")
+                    st.markdown(
+                        f'<div style="background:#F0F4F8;border-left:4px solid #0D7377;border-radius:6px;'                        f'padding:10px 14px;font-family:monospace;font-size:0.8rem;'                        f'color:#0B2540;line-height:1.7;margin-top:6px">{formula_html}</div>',
+                        unsafe_allow_html=True)
+
+    # Quick reference tables
+    st.markdown('<div class="sec-hdr" style="margin-top:20px">⚡ Quick Reference — LPS Bands & 9-Box Cells</div>',
+                unsafe_allow_html=True)
+    qr_cols = st.columns(2)
+    with qr_cols[0]:
+        st.markdown("""
+        <div class="card">
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:0.9rem;color:#0B2540;margin-bottom:10px">LPS Score → Band Mapping</div>
+          <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+            <tr style="background:#F0F4F8"><th style="padding:6px 10px;text-align:left">LPS Range</th><th style="padding:6px 10px;text-align:left">Band</th><th style="padding:6px 10px;text-align:left">Readiness</th></tr>
+            <tr><td style="padding:6px 10px;color:#1B7A3E;font-weight:700">80–100</td><td style="padding:6px 10px">Band 5</td><td style="padding:6px 10px">Ready Now</td></tr>
+            <tr style="background:#F8FBFD"><td style="padding:6px 10px;color:#2563EB;font-weight:700">65–79</td><td style="padding:6px 10px">Band 4</td><td style="padding:6px 10px">Ready in 1–2 Years</td></tr>
+            <tr><td style="padding:6px 10px;color:#D97706;font-weight:700">50–64</td><td style="padding:6px 10px">Band 3</td><td style="padding:6px 10px">Ready in 2–3 Years</td></tr>
+            <tr style="background:#F8FBFD"><td style="padding:6px 10px;color:#EA580C;font-weight:700">35–49</td><td style="padding:6px 10px">Band 2</td><td style="padding:6px 10px">Emerging Potential</td></tr>
+            <tr><td style="padding:6px 10px;color:#B91C1C;font-weight:700">0–34</td><td style="padding:6px 10px">Band 1</td><td style="padding:6px 10px">Not Yet Ready</td></tr>
+          </table>
+        </div>""", unsafe_allow_html=True)
+    with qr_cols[1]:
+        st.markdown("""
+        <div class="card">
+          <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:0.9rem;color:#0B2540;margin-bottom:10px">9-Box Cell Reference</div>
+          <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+            <tr style="background:#F0F4F8"><th style="padding:5px 8px;text-align:left">Cell Label</th><th style="padding:5px 8px;text-align:left">Performance</th><th style="padding:5px 8px;text-align:left">Potential (LPS)</th></tr>
+            <tr><td style="padding:5px 8px;font-weight:700;color:#065F46">Top Talent</td><td>High</td><td>≥ 65</td></tr>
+            <tr style="background:#F8FBFD"><td style="padding:5px 8px;font-weight:700;color:#1B7A3E">Future Leader</td><td>Moderate</td><td>≥ 65</td></tr>
+            <tr><td style="padding:5px 8px;font-weight:700;color:#7C3AED">Enigma</td><td>Low</td><td>≥ 65</td></tr>
+            <tr style="background:#F8FBFD"><td style="padding:5px 8px;font-weight:700;color:#0D7377">High Potential</td><td>High</td><td>35–64</td></tr>
+            <tr><td style="padding:5px 8px;font-weight:700;color:#2563EB">Core Contributor</td><td>Moderate</td><td>35–64</td></tr>
+            <tr style="background:#F8FBFD"><td style="padding:5px 8px;font-weight:700;color:#EA580C">Developing</td><td>Low</td><td>35–64</td></tr>
+            <tr><td style="padding:5px 8px;font-weight:700;color:#D97706">Misaligned Star</td><td>High</td><td>&lt; 35</td></tr>
+            <tr style="background:#F8FBFD"><td style="padding:5px 8px;font-weight:700;color:#94A3B8">Eff. Contributor</td><td>Moderate</td><td>&lt; 35</td></tr>
+            <tr><td style="padding:5px 8px;font-weight:700;color:#B91C1C">Underperformer</td><td>Low</td><td>&lt; 35</td></tr>
+          </table>
+        </div>""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAB 10 — GLOSSARY
+# ═══════════════════════════════════════════════════════════════════════════
+with tab10:
+    st.markdown('''<div class="sec-hdr">📖 Glossary — Terms, Metrics & Formulae</div>''', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="background:#EBF4F8;border-left:4px solid #0D7377;border-radius:8px;
+         padding:14px 18px;margin-bottom:20px;font-size:0.85rem;color:#374151">
+      This glossary defines every metric, score, and term used throughout the Succession Planning Engine.
+      Use it to understand how scores are calculated, what they mean, and how they differ from similar-sounding metrics.
+    </div>
+    """, unsafe_allow_html=True)
+
+    GLOSSARY = {
+        "📐 Core Scores & Indices": [
+            ("Leadership Potential Score (LPS)",
+             "A composite score from 0 to 100 that quantifies an employee's overall readiness and potential for succession to a critical role.",
+             "LPS = (C1 × w1%) + (C2 × w2%) + (C3 × w3%) + (C4 × w4%) + (C5 × w5%)\nwhere w1–w5 are the user-configurable weights set in the sidebar (must sum to 100).\nEach cluster Cx is normalised to a 0–100 scale before weighting.",
+             "#0B2540"),
+            ("LPS Band",
+             "A categorical readiness label derived from the LPS score, indicating how close an employee is to being succession-ready.",
+             "Band 5 — Ready Now:          LPS ≥ 80\nBand 4 — Ready in 1–2 Years: LPS 65–79\nBand 3 — Ready in 2–3 Years: LPS 50–64\nBand 2 — Emerging Potential: LPS 35–49\nBand 1 — Not Yet Ready:      LPS < 35",
+             "#0B2540"),
+            ("C1 — Performance Cluster",
+             "Measures sustained performance delivery over time, combining the 3-year average rating, the most recent annual rating, and the direction of the performance trend.",
+             "C1 = norm(3yr Avg Perf) × 0.50 + norm(Last Perf) × 0.35 + norm(Trajectory) × 0.15\nAll inputs normalised (min–max) to 0–100 before weighting.",
+             "#0D7377"),
+            ("C2 — KF Assessment Cluster",
+             "Reflects the quality of an employee's leadership potential as assessed by Korn Ferry instruments (KFALP and/or viaEdge).",
+             "C2 = norm(KF Blended Assessment Composite)\nIf KF data is absent, the 3-year average performance rating is used as a proxy.",
+             "#C9A227"),
+            ("C3 — Career Velocity Cluster",
+             "Captures the pace of career progression relative to peers, rewarding employees who have advanced faster throughout their career and in recent years.",
+             "C3 = norm(Promotions per Year — Career) × 0.50\n    + norm(Promotions per Year — Last 5 Years) × 0.35\n    + norm(Total Promotions Career) × 0.15",
+             "#2563EB"),
+            ("C4 — Leadership Breadth Cluster",
+             "Measures the width and richness of an employee's leadership experience — cross-functional exposure, international experience, project leadership, external recognition, and span of control.",
+             "Breadth Score = Cross-Functional Experience × 25\n               + International Experience × 20\n               + norm(Critical Projects Led) × 30\n               + norm(External Recognition) × 15\n               + norm(Direct Reports) × 10\nC4 = norm(Breadth Score)",
+             "#7C3AED"),
+            ("C5 — Readiness & Mobility Cluster",
+             "Assesses how close an employee is to being immediately deployable — factoring in grade proximity to the target role, mobility/relocation willingness, and retention risk.",
+             "C5 = norm(Mobility Willingness) × 0.35\n    + norm(Grade Proximity to Max) × 0.35\n    + Flight Risk Score × 0.30\n\nFlight Risk Score: Low = 100, Medium = 50, High = 0\nGrade Proximity = max_grade − current_grade (inverted — higher grade = closer to top)",
+             "#EA580C"),
+        ],
+        "📈 Career Progression Metrics": [
+            ("Promotions per Year (Career)",
+             "The overall rate of promotion across an employee's entire career with the organisation. This is the primary career velocity indicator.",
+             "Promotions per Year (Career) = Total Promotions (Career) ÷ Tenure with Organisation (Years)\n\nExample: 4 promotions over 10 years = 0.40 promotions/year",
+             "#0D7377"),
+            ("Promotions per Year (Last 5 Years)",
+             "The recent promotion rate, measuring how actively the employee has progressed in the most recent 5-year window. A higher recent rate vs career rate indicates accelerating momentum.",
+             "Promotions per Year (Last 5 Yrs) = Promotions in Last 5 Years ÷ 5\n\nExample: 2 promotions in last 5 years = 0.40 promotions/year (recent)",
+             "#0D7377"),
+            ("Performance Velocity",
+             "A directional metric showing whether an employee's performance is improving, declining, or stable over time. It is NOT a promotion rate — it measures the slope of the performance trend.",
+             "Performance Trajectory = Last Annual Rating − 3-Year Average Rating\n\nPositive value (+) = improving trend (e.g. +0.4 means last year was 0.4 points above recent average)\nNegative value (−) = declining trend\nZero = stable performance\n\nKey distinction from Promotions/Year: Velocity is about performance momentum; Promotions/Year is about career progression speed.",
+             "#2563EB"),
+            ("Promotions per Year vs Performance Velocity — Key Differences",
+             "These two metrics measure fundamentally different things and should not be confused.",
+             "┌─────────────────────┬────────────────────────────────────────┐\n│ Metric              │ What it measures                       │\n├─────────────────────┼────────────────────────────────────────┤\n│ Promotions/Year     │ Speed of career progression (grades    │\n│                     │ advanced per year). Measures MOVEMENT. │\n├─────────────────────┼────────────────────────────────────────┤\n│ Performance Velocity│ Direction & slope of performance       │\n│                     │ ratings over time. Measures TRAJECTORY │\n│                     │ not movement up the hierarchy.         │\n└─────────────────────┴────────────────────────────────────────┘\nA person can have high Promotions/Year but declining Performance Velocity\n(fast-tracked but now plateauing) — or stable Promotions/Year but strong\npositive velocity (steady climber, consistently improving ratings).",
+             "#7C3AED"),
+            ("Performance Trajectory",
+             "See Performance Velocity above. Used in C1 cluster calculation and displayed in the Career Path tab KPI strip.",
+             "Trajectory = Last Annual Rating − 3-Year Average Rating",
+             "#64748B"),
+            ("Average Tenure per Role",
+             "How long an employee stays in each role on average, indicating whether they are developing in-depth expertise or rotating too quickly.",
+             "Avg Tenure per Role = Tenure (Years) ÷ (Total Role Changes + 1)\nWhere Total Role Changes = Total Promotions + Lateral Moves",
+             "#64748B"),
+        ],
+        "🔲 9-Box Grid": [
+            ("9-Box Position",
+             "A talent classification framework that plots employees on a 3×3 grid of Performance (X-axis) vs Potential (Y-axis). Used to categorise talent into 9 archetypes.",
+             "X-axis — Performance (from HR-assessed label in employee data):\n  0 = Low Performer\n  1 = Moderate Performer\n  2 = High Performer / Exceptional Performer\n\nY-axis — Potential (LPS-derived in this engine):\n  0 = Low Potential  (LPS < 35)\n  1 = Moderate Potential (LPS 35–64)\n  2 = High Potential (LPS ≥ 65)\n\nNote: The potential axis is driven by LPS to ensure objectivity and consistency with the succession scoring methodology.",
+             "#0B2540"),
+            ("9-Box Cell Archetypes",
+             "Each cell in the 9-box grid has a label describing the archetype of talent it represents.",
+             "(High Perf / High Pot) = Top Talent          — highest priority for succession\n(Mod Perf / High Pot) = Future Leader       — develop and stretch\n(Low Perf / High Pot) = Enigma              — investigate barriers to performance\n(High Perf / Mod Pot) = High Potential      — solid successors, limited stretch\n(Mod Perf / Mod Pot) = Core Contributor     — valuable, stable performers\n(Low Perf / Mod Pot) = Developing           — needs performance support\n(High Perf / Low Pot) = Misaligned Star     — expert in role, unlikely to advance\n(Mod Perf / Low Pot) = Effective Contributor— dependable, not succession-ready\n(Low Perf / Low Pot) = Underperformer       — performance management required",
+             "#0B2540"),
+        ],
+        "🧠 Korn Ferry Assessments": [
+            ("KF KFALP",
+             "Korn Ferry Leadership Architect Learning Profile — a psychometric instrument measuring six dimensions of leadership potential: Drivers, Curiosity, Insight, Engagement, Determination, and Learnability. Scores are on a 1–5 scale.",
+             "KF KFALP Composite = weighted average of 6 dimension scores\nDimensions: Drivers · Curiosity · Insight · Engagement · Determination · Learnability\nScale: 1 = Limited, 2 = Developing, 3 = Effective, 4 = Strong, 5 = Exceptional",
+             "#C9A227"),
+            ("KF viaEdge",
+             "Korn Ferry viaEdge — an assessment measuring Learning Agility across five dimensions: Mental Agility, People Agility, Change Agility, Results Agility, and Self-Awareness. Includes a global percentile rank.",
+             "KF viaEdge Composite = weighted average of 5 agility dimension scores\nDimensions: Mental Agility · People Agility · Change Agility · Results Agility · Self-Awareness\nAlso produces a Learning Agility Percentile vs global KF norm database.",
+             "#7C3AED"),
+            ("KF Blended Assessment Composite",
+             "A single composite score combining both KFALP and viaEdge into one number, used as the input to the C2 (KF Assessment) cluster in LPS.",
+             "KF Blended = KFALP Composite × 0.55 + viaEdge Composite × 0.45\nScale: 1.0–5.0",
+             "#C9A227"),
+            ("Learning Agility",
+             "The ability to learn from experience and apply that learning to new and first-time situations. Measured by KF viaEdge. High learning agility is the single strongest predictor of long-term leadership potential.",
+             "Assessed across 5 dimensions (see viaEdge above).\nLearning Agility Percentile = position vs KF global norm database (1–100).",
+             "#7C3AED"),
+        ],
+        "⚠️ Risk & Retention": [
+            ("Flight Risk",
+             "An HR-assessed indicator of how likely an employee is to voluntarily leave the organisation within the next 12 months.",
+             "Low    = unlikely to leave — included in all succession pools by default\nMedium = moderate attrition risk — included unless filter is enabled\nHigh   = active attrition risk — excluded from succession pools when 'Exclude High Flight Risk' is checked in sidebar\n\nImpact on C5 cluster: Low = 100 pts, Medium = 50 pts, High = 0 pts",
+             "#B91C1C"),
+            ("On Active Retention Plan",
+             "Boolean flag indicating whether the employee is currently on a formal retention plan managed by HR/HRBP.",
+             "True = employee is on a retention plan (typically for high-potential or flight-risk employees)\nFalse = no active retention plan",
+             "#B91C1C"),
+        ],
+        "🏢 Pipeline & Succession": [
+            ("Grade Window",
+             "The range of job grades eligible to be considered as successors for a given critical role. Prevents succession from becoming too shallow (only immediate deputies) or too deep (junior employees).",
+             "Eligible Grade Range = [min_grade − grade_window, min_grade + 1]\nExample: CEO role with min_grade=9, window=2 → eligible grades 7–9 (excluding incumbent)",
+             "#0B2540"),
+            ("Global Deduplication",
+             "A 3-layer algorithm that ensures no single employee appears as the #1 successor for more than one critical role. This prevents over-reliance on a single individual and ensures breadth of bench strength.",
+             "Layer 1: Each role builds its own eligible pool (grade window + department preference)\nLayer 2: Candidates already assigned as #1 to a higher-priority role are deprioritised\nLayer 3: If fewer than 3 fresh candidates exist for a role, the pool is relaxed to allow repeats",
+             "#0B2540"),
+            ("Bench Strength",
+             "The aggregate quality of a succession pipeline — measured by the LPS scores of the top 3 successors for each critical role. A strong bench has all three successors scoring ≥ 65 (Band 4+).",
+             "Displayed in Tab 5 as a heatmap: green cells = LPS ≥ 65, red cells = LPS < 35\nA role with all red successors is a critical succession risk requiring immediate action.",
+             "#0D7377"),
+            ("Successor Rank",
+             "The priority order of successors for a critical role, derived from LPS score within the eligible pool (after department preference sorting).",
+             "#1 — Primary Successor:   highest LPS in eligible pool\n#2 — Secondary Successor: second-highest LPS\n#3 — Tertiary Successor:  third-highest LPS",
+             "#0D7377"),
+        ],
+    }
+
+    for section, terms in GLOSSARY.items():
+        st.markdown(f'''<div style="font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;
+             color:#0B2540;border-bottom:2px solid #0D7377;padding-bottom:6px;
+             margin:20px 0 12px 0">{section}</div>''', unsafe_allow_html=True)
+
+        for term, definition, formula, color in terms:
+            with st.expander(f"**{term}**", expanded=False):
+                st.markdown(f"""
+                <div style="padding:4px 0">
+                  <div style="font-size:0.87rem;color:#374151;line-height:1.7;margin-bottom:10px">{definition}</div>
+                  <div style="background:#F0F4F8;border-left:4px solid {color};border-radius:6px;
+                       padding:10px 14px;font-family:'Courier New',monospace;font-size:0.78rem;
+                       color:#0B2540;white-space:pre-wrap;line-height:1.8">{formula}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # Quick-reference comparison table
+    st.markdown('''<div class="sec-hdr" style="margin-top:24px">🔑 Quick Reference — Key Metric Comparison</div>''', unsafe_allow_html=True)
+    qr_data = {
+        "Metric": [
+            "LPS", "C1 Performance", "C2 KF Assessment", "C3 Career Velocity",
+            "C4 Leadership Breadth", "C5 Readiness", "Promotions/Year (Career)",
+            "Promotions/Year (Last 5yr)", "Performance Trajectory", "KFALP Composite",
+            "viaEdge Composite", "KF Blended", "Flight Risk Score", "LPS Band",
+        ],
+        "Scale": [
+            "0–100","0–100","0–100","0–100","0–100","0–100",
+            "0.0–1.0+","0.0–1.0+","−4 to +4","1.0–5.0","1.0–5.0","1.0–5.0","0/50/100","1–5",
+        ],
+        "What it answers": [
+            "How succession-ready is this person overall?",
+            "How strong and consistent is their performance?",
+            "How does their KF assessment rate their leadership potential?",
+            "How fast have they progressed through the organisation?",
+            "How broad and deep is their leadership experience?",
+            "How close are they to deployment — grade, mobility, retention?",
+            "What is their career-long promotion speed?",
+            "What is their recent (last 5yr) promotion speed?",
+            "Is their performance improving or declining?",
+            "How strong is their leadership potential (KFALP)?",
+            "How learning agile are they (viaEdge)?",
+            "What is their overall KF leadership potential score?",
+            "How likely are they to leave? (High=0, Med=50, Low=100)",
+            "Which readiness band are they in? (1=Not Ready, 5=Ready Now)",
+        ],
+    }
+    st.dataframe(qr_data, use_container_width=True, hide_index=True)
+
